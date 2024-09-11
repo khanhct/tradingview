@@ -1,0 +1,161 @@
+// This Pine Script™ code is subject to the terms of the Mozilla Public License 2.0 at https://mozilla.org/MPL/2.0/
+// ©KhanhCT
+//@version=5
+
+
+indicator("Forex Market Session", "TFlab Sessions", overlay = true, max_bars_back = 5000, max_boxes_count = 500,max_labels_count = 500,max_lines_count = 500)
+
+// Session Tokyo
+show_sesTokyo = input(true, 'Tokyo Session', group = 'Tokyo Session') 
+sesTokyo_ses = input.session('2300-0700', '', inline = 'sesTokyo', group = 'Tokyo Session')
+sesTokyoIB = input.session('2300-0030', '', inline = 'sesTokyo', group = 'Tokyo Session')
+sesTokyo_color = input.color(#0CC1C0, 'Color', inline = 'sesTokyo', group = 'Tokyo Session')
+sesTokyo_text = 'Tokyo'
+
+show_seslondon = input(true, 'London Session',  group = ' London Session') 
+seslondon_ses = input.session('0800-1700', '', inline = 'seslondon', group = ' London Session')
+seslondonIB = input.session('0800-0930', '', inline = 'seslondon', group = ' London Session')
+seslondon_color = input.color(#ACBBE8, 'Color', inline = 'seslondon', group = ' London Session')
+seslondon_text = 'London'
+
+// Session NewYork
+show_sesNewyork = input(true, 'Newyork Session',  group = 'Newyork Session') 
+sesNewyork_ses = input.session('1300-2200', '', inline = 'sesNewyork', group = 'Newyork Session')
+sesNewyorkIB = input.session('1300-1430', '', inline = 'sesNewyork', group = 'Newyork Session')
+sesNewyork_color = input.color(#C5ACE8, 'Color', inline = 'sesNewyork', group = 'Newyork Session')
+sesNewyork_text = 'NY'
+
+show_sesNYSE = input(true, 'NYSE',  group = 'NYSE Session') 
+sesNYSE_ses = input.session('1430-2200', '', inline = 'sesNYSE', group = 'NYSE Session')
+sesNYSE_color = input.color(#87c2d4, 'Color', inline = 'sesNYSE', group = 'NYSE Session')
+sesNYSE_text = 'NYSE'
+
+//Info Table
+Show_Info_Table = input(true, 'Info Table', group   = 'Table')
+
+//zones
+On_sesTokyo = math.sign(nz(time(timeframe.period, sesTokyo_ses, 'UTC+0')))
+OnSesTokyoIB = math.sign(nz(time(timeframe.period, sesTokyoIB, 'UTC+0')))
+On_seslondon = math.sign(nz(time(timeframe.period, seslondon_ses, 'UTC+0')))
+OnSesLondonIB = math.sign(nz(time(timeframe.period, seslondonIB, 'UTC+0')))
+On_sesNewyork = math.sign(nz(time(timeframe.period, sesNewyork_ses, 'UTC+0')))
+OnSesNewyorkIB = math.sign(nz(time(timeframe.period, sesNewyorkIB, 'UTC+0')))
+On_sesNYSE = math.sign(nz(time(timeframe.period, sesNYSE_ses, 'UTC+0')))
+
+
+//High & Low Session Detector 
+LowHighSessionDetector(On_Session, Color_Session, Text_Session, IsIB = false) =>
+    var int Bar = 0
+    var float High = 0.0 
+    var float Low = 0.0
+    var bgColor = color.new(Color_Session, 95)
+
+    var box BoX = na
+    var label LabeL = na 
+    if  (On_Session[1] == 0 and On_Session == 1)
+        Bar := bar_index
+        High := high
+        Low := low
+    else if (On_Session[1] == 1 and On_Session == 1)
+        High := math.max(high , High) 
+        Low :=   math.min(low , Low)
+    else if On_Session == 0
+        High := 0.0 
+        Low := 0.0
+        Bar := 0
+    
+    if IsIB
+        bgColor := color.new(Color_Session, 50)
+
+    if On_Session > On_Session[1]
+        BoX := box.new(bar_index,High, bar_index , Low, border_width = 2, bgcolor = bgColor,
+         border_color = color.rgb(34, 101, 155),
+         border_style = line.style_dashed)
+        
+        LabeL := label.new(Bar, High , text = Text_Session ,xloc = xloc.bar_index, yloc = yloc.price, size = size.small ,
+         style = (Text_Session == 'Sydney' or Text_Session == 'Europe' ) ? label.style_label_lower_right  : 
+         Text_Session == 'Asia' ?  label.style_label_down :  label.style_label_lower_left,
+         textcolor = Color_Session, color = color.rgb(255, 255, 255, 100))
+    if On_Session and On_Session == On_Session[1]
+        box.set_top(BoX, High)
+        box.set_bottom(BoX, Low)
+        box.set_right(BoX, bar_index)
+        label.set_x(LabeL,math.round(math.avg(Bar,bar_index)))
+        label.set_y(LabeL, High)
+
+
+    [High , Low ]
+  
+// Get the current hour and minute in UTC
+utc_hour = hour(timenow)
+utc_minute = minute(timenow)
+
+// Check if it's 9:00 AM UTC
+IBTo = "IBTo+-"
+IBColour = color.red
+if show_sesTokyo 
+    [HighT, LowT]  = LowHighSessionDetector(On_sesTokyo,sesTokyo_color,sesTokyo_text)
+    [HighTIB, LowTIB]  = LowHighSessionDetector(OnSesTokyoIB,IBColour, IBTo, true)
+    if (hour == 19) and (minute == 00)
+        line.new(bar_index, bar_index, bar_index, bar_index, color=color.red, width=1,style=line.style_dashed,extend=extend.both)
+
+if show_seslondon 
+    [HighL, LowL]  = LowHighSessionDetector(On_seslondon,seslondon_color,seslondon_text)
+    [HighLIB, LowLIB]  = LowHighSessionDetector(OnSesLondonIB,IBColour, IBTo, true)
+    if (hour == 4) and (minute == 00)
+        line.new(bar_index, bar_index, bar_index, bar_index, color=color.red, width=1,style=line.style_dashed,extend=extend.both)
+
+if show_sesNewyork 
+    [HighN, LowN]  = LowHighSessionDetector(On_sesNewyork,sesNewyork_color,sesNewyork_text)
+    [HighNIB, LowNIB]  = LowHighSessionDetector(OnSesNewyorkIB,IBColour, IBTo, true)
+    if (hour == 9) and (minute == 00)
+        line.new(bar_index, bar_index, bar_index, bar_index, color=color.red, width=1,style=line.style_dashed,extend=extend.both)
+
+if show_sesNYSE
+    [HighNY, LowNY]  = LowHighSessionDetector(On_sesNYSE,sesNYSE_color,sesNYSE_text)
+
+
+//Info Table
+var Info_Table = table.new(position.top_right, 4, 10, bgcolor = #283c74, border_color = #53609bcb, border_width = 1, 
+ frame_color = #373a46 , frame_width = 1)
+
+if Show_Info_Table
+    table.cell(Info_Table, 0, 0, 'Session Time', text_color = color.white, text_size = size.small)
+    table.merge_cells(Info_Table, 0, 0, 3, 0)
+    table.cell(Info_Table, 0, 1, 'Session', text_color = color.white, text_size = size.small)
+    table.cell(Info_Table, 1, 1, 'Status', text_color = color.white, text_size = size.small)
+    table.cell(Info_Table, 2, 1, 'Start(UTC)', text_color = color.white, text_size = size.small)
+    table.cell(Info_Table, 3, 1, 'End(UTC)', text_color = color.white, text_size = size.small)
+
+    table.cell(Info_Table, 0, 2, sesTokyo_text, text_color = sesTokyo_color, text_size = size.small)
+    table.cell(Info_Table, 0, 3, seslondon_text, text_color = seslondon_color, text_size = size.small)
+    table.cell(Info_Table, 0, 4, sesNewyork_text, text_color = sesNewyork_color, text_size = size.small)
+    table.cell(Info_Table, 0, 5, sesNYSE_text, text_color = sesNYSE_color, text_size = size.small)
+
+    
+    table.cell(Info_Table, 1, 2, (On_sesTokyo ? 'Open' : 'Closed')
+      , bgcolor = On_sesTokyo ? #56a3a6 : #db504a
+      , text_color = color.rgb(0, 0, 0)
+      , text_size = size.small)
+    table.cell(Info_Table, 1, 3, (On_seslondon ? 'Open' : 'Closed')
+      , bgcolor = On_seslondon ? #56a3a6 : #db504a
+      , text_color = color.rgb(0, 0, 0)
+      , text_size = size.small)
+    table.cell(Info_Table, 1, 4, (On_sesNewyork ? 'Open' : 'Closed')
+      , bgcolor = On_sesNewyork ? #56a3a6 : #db504a
+      , text_color = color.rgb(0, 0, 0)
+      , text_size = size.small)
+    table.cell(Info_Table, 1, 5, (On_sesNYSE ? 'Open' : 'Closed')
+      , bgcolor = On_sesNYSE ? #56a3a6 : #db504a
+      , text_color = color.rgb(0, 0, 0)
+      , text_size = size.small)
+
+    table.cell(Info_Table, 2, 2, '23:00' , text_color = color.white, text_size = size.small)
+    table.cell(Info_Table, 2, 3, '08:00' , text_color = color.white, text_size = size.small)
+    table.cell(Info_Table, 2, 4, '13:00' , text_color = color.white, text_size = size.small)
+    table.cell(Info_Table, 2, 5, '14:30' , text_color = color.white, text_size = size.small)
+
+    table.cell(Info_Table, 3, 2, '06:00' , text_color = color.white, text_size = size.small)
+    table.cell(Info_Table, 3, 3, '16:30' , text_color = color.white, text_size = size.small)
+    table.cell(Info_Table, 3, 4, '22:00' , text_color = color.white, text_size = size.small)
+    table.cell(Info_Table, 3, 5, '22:00' , text_color = color.white, text_size = size.small)

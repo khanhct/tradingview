@@ -1,0 +1,85 @@
+//@version=5
+indicator(title="Triple Stochastic", shorttitle="Scalping", format=format.price, precision=2)
+
+// Định nghĩa các input
+periodK1 = input.int(10, title="%K Length 1", minval=1, group = "TMA")
+periodK2 = input.int(21, title="%K Length 2", minval=1, group = "TMA")
+periodK3 = input.int(34, title="%K Length 3", minval=1, group = "TMA")
+
+periodD = input.int(5, title="%D Smoothing", minval=1, group = "TMA")
+
+smoothK1 = input.int(5, title="%K Smoothing 1", minval=1, group = "TMA")
+smoothK2 = input.int(9, title="%K Smoothing 2", minval=1, group = "TMA")
+smoothK3 = input.int(13, title="%K Smoothing 3", minval=1, group = "TMA")
+
+
+timeFrame = input.int(1, title="Time Frame", minval=1, group = "TMA")
+delta = input.float(defval=14, title="Delta", minval=0, maxval=100, step=0.1)
+
+showAlert = input.bool(defval=false, title="Show alert", group = "Alert")
+
+lengthRSI = input.int(14, "RSI Length", minval=1, group = 'Others')
+lengthRSIMA = input.int(14, "RSI MA Length", minval=1, group = 'Others')
+rsiColor = input.color(color.purple, 'RSI Color', inline = 'RSI color', group = 'Others')
+
+lengthMFI = input.int(14, "MFI Length", minval=1, group = 'Others')
+mfiColor = input.color(color.green, 'MFI Color', inline = 'MFI color', group = 'Others')
+
+// Tính toán các đường Stochastic
+k1 = ta.sma(ta.stoch(close, high, low, timeFrame * periodK1), timeFrame * smoothK1)
+d1 = ta.sma(k1, timeFrame * periodD)
+
+k2 = ta.sma(ta.stoch(close, high, low, timeFrame * periodK2), timeFrame * smoothK2)
+d2 = ta.sma(k2, timeFrame * periodD)
+
+
+// Vẽ các đường
+plot(k1, title="%K1", color=color.blue)
+plot(d1, title="%D1", color=color.black)
+plot(k2, title="%K2", color=color.orange)
+
+// Calculate RSI
+src = close
+up = ta.rma(math.max(ta.change(src), 0), lengthRSI)
+down = ta.rma(-math.min(ta.change(src), 0), lengthRSI)
+rsi = down == 0 ? 100 : up == 0 ? 0 : 100 - (100 / (1 + up / down))
+rsiMA = ta.sma(source = rsi, length = timeFrame * lengthRSIMA)
+
+// Calculate MFI
+mf_src = hlc3
+mfi = ta.mfi(mf_src, lengthMFI)
+
+// Vẽ các dải băng
+hline(timeFrame, "Middle Band", color=color.new(#787B86, 50))
+
+h0 = hline(80, "Upper Band", color=#787B86)
+h1 = hline(20, "Lower Band", color=#787B86)
+fill(h0, h1, color=color.rgb(33, 150, 243, 90), title="Background TMA")
+
+h2 = hline(70, "Upper Band", color=#787B86)
+h3 = hline(30, "Lower Band", color=#787B86)
+fill(h2, h3, color=color.rgb(33, 150, 243, 90), title="Background RSI")
+
+// plot(rsiMA, title="MA-RSI", color=rsiColor, linewidth=2)
+// plot(mfi, title="MFI", color=mfiColor, linewidth=2)
+       
+buyDelta = k1 - k2
+buyCondition = buyDelta >= -delta and buyDelta <= delta and rsi <= 35
+
+sellDelta = k2 - k1
+sellCondition = sellDelta >= -delta and sellDelta <= delta  and rsi >= 65
+
+// Tạo cảnh báo
+alertcondition(showAlert ? buyCondition : na, title="Buy Signal 1", message="K1 crossed above D1")
+alertcondition(showAlert ? sellCondition : na, title="Sell Signal 1", message="K1 crossed below D1")
+
+// Định nghĩa ký tự mũi tên
+var string arrowUp = "▲"
+var string arrowDown = "▼"
+
+// Vẽ mũi tên
+if buyCondition
+    label.new(showAlert ? bar_index : na, k1, text=arrowUp, style=label.style_none, color=color.green, textcolor=color.green, yloc=yloc.price, size=size.small)
+
+if sellCondition
+    label.new(showAlert ? bar_index : na, k1, text=arrowDown, style=label.style_none, color=color.red, textcolor=color.red, yloc=yloc.price, size=size.small)

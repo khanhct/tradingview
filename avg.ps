@@ -1,0 +1,92 @@
+// This Pine Script™ code is subject to the terms of the Mozilla Public License 2.0 at https://mozilla.org/MPL/2.0/
+// ©KhanhCT
+//@version=5
+
+indicator("Forex Avg Session Price", "KhanhCT Sessions", overlay = true, max_bars_back = 5000, max_boxes_count = 500,max_labels_count = 500,max_lines_count = 500)
+
+start_time = input.time(timestamp("20 Jul 2024 00:00 +0300"), "Start Time")
+end_time = input.time(timestamp("20 Jul 2024 00:00 +0300"), "End Time")
+
+tokyo_session_time = input.session('2300-0700', '', inline = 'sesTokyo', group = 'Tokyo Session')
+london_session_time = input.session('0800-1700', '', inline = 'seslondon', group = ' London Session')
+nw_session_time = input.session('1300-2200', '', inline = 'sesNewyork', group = 'Newyork Session')
+
+tokyo_session = math.sign(nz(time(timeframe.period, tokyo_session_time, 'UTC+0')))
+lodonSession = math.sign(nz(time(timeframe.period, london_session_time, 'UTC+0')))
+nwSession = math.sign(nz(time(timeframe.period, nw_session_time, 'UTC+0')))
+
+var float tokyo_hight = 0
+var float tokyo_low = 0
+var tokyo_count = 0
+var float tokyo_avg = 0
+if time >= start_time and time <= end_time
+    if tokyo_session == 1
+        if tokyo_session[1] == 0
+            tokyo_hight := high
+            tokyo_low := low
+            tokyo_count += 1
+        
+        // Update session high and low during the session
+        tokyo_hight := math.max(tokyo_hight, high)
+        tokyo_low := math.min(tokyo_low, low)
+        
+    if tokyo_session == 0
+        tokyo_avg += tokyo_hight - tokyo_low
+        tokyo_hight := 0
+        tokyo_low := 0
+
+var float ld_hight = 0
+var float ld_low = 0
+var ld_count = 0
+var float ld_avg = 0
+if time >= start_time and time <= end_time
+    if tokyo_session == 1
+        if tokyo_session[1] == 0
+            ld_hight := high
+            ld_low := low
+            ld_count += 1
+        
+        // Update session high and low during the session
+        ld_hight := math.max(ld_hight, high)
+        ld_low := math.min(ld_low, low)
+        
+    if tokyo_session == 0
+        ld_avg += ld_hight - tokyo_low
+        ld_hight := 0
+        ld_low := 0
+
+
+var float nw_hight = 0
+var float nw_low = 0
+var nw_count = 0
+var float nw_avg = 0
+if time >= start_time and time <= end_time
+    if tokyo_session == 1
+        if tokyo_session[1] == 0
+            nw_hight := high
+            ld_low := low
+            nw_count += 1
+        
+        // Update session high and low during the session
+        nw_hight := math.max(nw_hight, high)
+        ld_low := math.min(ld_low, low)
+        
+    if tokyo_session == 0
+        nw_avg += nw_hight - nw_low
+        ld_hight := 0
+        ld_low := 0
+
+
+//Info Table
+var Info_Table = table.new(position.top_right, 3, 10, bgcolor = #283c74, border_color = #53609bcb, border_width = 1, 
+ frame_color = #373a46 , frame_width = 1)
+table.cell(Info_Table, 0, 0, 'Avg Price', text_color = color.white, text_size = size.small)
+table.merge_cells(Info_Table, 0, 0, 2, 0)
+table.cell(Info_Table, 0, 1, 'Total CandleStick', text_color = color.white, text_size = size.small)
+table.cell(Info_Table, 1, 1, 'Total Price', text_color = color.white, text_size = size.small)
+table.cell(Info_Table, 2, 1, 'Avg(Pips)', text_color = color.white, text_size = size.small)
+
+table.cell(Info_Table, 0, 2, str.tostring(tokyo_count), text_color = color.white, text_size = size.small)
+table.cell(Info_Table, 1, 2, str.tostring(tokyo_avg), text_color = color.white, text_size = size.small)
+table.cell(Info_Table, 2, 2, str.tostring(tokyo_count), text_color = color.white, text_size = size.small)
+

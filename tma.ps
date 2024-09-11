@@ -1,0 +1,263 @@
+// This Pine Script™ code is subject to the terms of the Mozilla Public License 2.0 at https://mozilla.org/MPL/2.0/
+// © haidinh83
+
+//@version=5
+indicator("TMA", overlay = true, max_lines_count = 500, max_labels_count = 500, max_boxes_count = 500)
+import PineCoders/Time/3
+
+//INPUTS
+var GRP1 = "== Midnight Hunter Band Setting =="
+HalfLength = input.int(56, "Centered TMA Half Period", group = GRP1)
+string PriceType = input.string("Weighted", "Price to use", options = ["Close", "Open", "High", "Low", "Median", "Typical", "Weighted", "Average"], group = GRP1)
+AtrPeriod = input.int(110, "Average true range period", group = GRP1)
+AtrMultiplier = input.float(2.5, "Average true range multiplier", group = GRP1)
+TMAangle = input.int(4, "Centered TMA angle caution", group = GRP1)
+tmawidth = input.int(defval = 1, title = 'Band LineWidth', minval = 1, maxval = 4, group = GRP1)
+
+showIchimoku = input.bool(defval=true, title='Show Ichimoku', group = "Configs")
+// -------------------------------- BEGIN: Ichimoku --------------------------------
+conversionPeriods = input.int(9, minval=1, title="Conversion Line Length", group = "Ichimoku")
+basePeriods = input.int(26, minval=1, title="Base Line Length", group = "Ichimoku")
+laggingSpan2Periods = input.int(52, minval=1, title="Leading Span B Length", group = "Ichimoku")
+displacement = input.int(26, minval=1, title="Lagging Span", group = "Ichimoku")
+
+// Stochastic Settings
+var GRP4 = "== Stochastic Settings =="
+periodK1 = input.int(10, title="%K Length 1", minval=1, group=GRP4)
+periodK2 = input.int(21, title="%K Length 2", minval=1, group=GRP4)
+periodK3 = input.int(34, title="%K Length 3", minval=1, group=GRP4)
+periodD = input.int(5, title="%D Smoothing", minval=1, group=GRP4)
+smoothK1 = input.int(5, title="%K Smoothing 1", minval=1, group=GRP4)
+smoothK2 = input.int(9, title="%K Smoothing 2", minval=1, group=GRP4)
+smoothK3 = input.int(13, title="%K Smoothing 3", minval=1, group=GRP4)
+
+//VARIABLES
+float tmac = na
+float tmau = na
+float tmad = na
+
+var float pastTmac = na
+var float pastTmau = na
+var float pastTmad = na
+
+float tmau_temp = na
+float tmac_temp = na
+float tmad_temp = na
+
+float point = syminfo.pointvalue
+
+bool last = false
+bool longalert = false
+bool shortalert = false
+string timeframe = na
+
+if timeframe.isintraday and timeframe.multiplier >= 60 and timeframe.multiplier < 1440
+    timeframe := str.tostring(timeframe.multiplier / 60) + " H"
+else if timeframe.isintraday and timeframe.multiplier < 60
+    timeframe := str.tostring(timeframe.multiplier) + " M"
+else if timeframe.isintraday and timeframe.multiplier >= 1440
+    timeframe := str.tostring(timeframe.multiplier) + " D"
+else
+    timeframe := timeframe.period
+
+i_timeZone   = input.string(defval = 'GMT+7', title = "TimeZone Text Alert")
+current_time = str.tostring(hour(timenow, i_timeZone), '00:') + str.tostring(minute(timenow, i_timeZone), '00:') + str.tostring(second(timenow, i_timeZone), '00')
+
+showTF1 = input.bool(defval=true, title="??>> Show Table Status Eg. Trend and Indicator Value", group = "??? >> Table For Analyze Trend")
+
+var float limit_price = na
+
+var string alertSignal = "EMPTY"
+
+//COLORS
+var GRP2 = "== Midnight Colors =="
+var color colorBuffer = na
+color colorDOWN = input.color(color.new(color.red, 0), "Bear Color", inline = "5", group = GRP1)
+color colorUP = input.color(color.new(color.green, 0), "Bull Color", inline = "5", group = GRP1)
+color colorBands = input.color(color.new(#b2b5be, 0), "3 Bands Color", inline = "5", group = GRP1)
+bool cautionInput = input.bool(false, "Caution Label", inline = "6", group = GRP1)
+
+//ALERTS
+var GRP3 = "Alerts (Needs to create alert manually after every change)"
+bool crossUpInput = input.bool(false, "Crossing up", inline = "7", group = GRP3)
+bool crossDownInput = input.bool(false, "Crossing down", inline = "7", group = GRP3)
+bool comingBackInput = input.bool(false, "Coming back", inline = "7", group = GRP3)
+bool onArrowDownInput = input.bool(true, "On arrow down", inline = "8", group = GRP3)
+bool onArrowUpInput = input.bool(true, "On arrow up", inline = "8", group = GRP3)
+
+//CLEAR LINES
+a_allLines = line.all
+if array.size(a_allLines) > 0
+    for p = 0 to array.size(a_allLines) - 1
+        line.delete(array.get(a_allLines, p))
+        
+//GET PRICE        
+Price(x) =>
+    float price = switch PriceType
+        "Close" => close[x]
+        "Open" => open[x]
+        "High" => high[x]
+        "Low" => low[x]
+        "Median" => (high[x] + low[x]) / 2
+        "Typical" => (high[x] + low[x] + close[x]) / 3
+        "Weighted" => (high[x] + low[x] + close[x] + close[x]) / 4
+        "Average" => (high[x] + low[x] + close[x] + open[x])/ 4
+    price
+
+// Tính toán Ichimoku
+donchian(len) => math.avg(ta.lowest(len), ta.highest(len))
+conversionLine = donchian(conversionPeriods)
+baseLine = donchian(basePeriods)
+leadLine1 = math.avg(conversionLine, baseLine)
+leadLine2 = donchian(laggingSpan2Periods)
+
+// Tính toán các đường Stochastic
+k1 = ta.sma(ta.stoch(close, high, low, periodK1), smoothK1)
+d1 = ta.sma(k1, periodD)
+k2 = ta.sma(ta.stoch(close, high, low, periodK2), smoothK2)
+d2 = ta.sma(k2, periodD)
+k3 = ta.sma(ta.stoch(close, high, low, periodK3), smoothK3)
+d3 = ta.sma(k3, periodD)
+
+// Entry Assassin calculations
+ema9 = ta.ema(close, 9)
+ema5 = ta.ema(close, 5)
+[macdLine, _, _] = ta.macd(close, 12, 26, 9)
+[diPlus, diMinus, _] = ta.dmi(14, 14)
+
+buyCondition = ((diPlus - diPlus[1] >= 3) or diPlus > diMinus) and diPlus > 11
+sellCondition = ((diMinus - diMinus[1] >= 2) or diPlus < diMinus) and diMinus > 11
+
+//MAIN
+for i = HalfLength to 0
+    //ATR
+    atr = 0.0
+    for j = 0 to  AtrPeriod - 1
+        atr += math.max(high[i + j + 10], close[i + j + 11]) - math.min(low[i + j + 10], close[i + j + 11])
+    atr /= AtrPeriod
+    
+    //BANDS
+    sum = (HalfLength + 1) * Price(i)
+    sumw = (HalfLength + 1)
+    k = HalfLength
+    for j = 1 to HalfLength
+        sum += k * Price(i + j)
+        sumw += k
+        if (j <= i)
+            sum  += k * Price(i - j)
+            sumw += k
+        k -= 1
+    tmac := sum/sumw
+    tmau := tmac+AtrMultiplier*atr
+    tmad := tmac-AtrMultiplier*atr
+    
+    //CHANGE TREND COLOR
+    if pastTmac != 0.0
+        if tmac > pastTmac
+            colorBuffer := colorUP
+        if tmac < pastTmac
+            colorBuffer := colorDOWN
+            
+    //SIGNALS
+    reboundD = 0.0
+    reboundU = 0.0
+    caution = 0.0
+    if pastTmac != 0.0
+        if (high[i + 1] > pastTmau and close[i + 1] > open[i + 1] and close[i] < open[i] and k1[i] < k2[i] and k2[i] < k3[i])
+            reboundD := high[i] + AtrMultiplier * atr / 2
+            if (tmac - pastTmac > TMAangle * point)
+                caution := reboundD + 10 * point
+        if (low[i + 1] < pastTmad and close[i + 1] < open[i + 1] and close[i] > open[i] and k1[i] > k2[i] and k2[i] > k3[i])
+            reboundU := low[i] - AtrMultiplier * atr / 2
+            if (pastTmac - tmac > TMAangle * point)
+                caution := reboundU - 10 * point
+    
+    //LAST REAL
+    if barstate.islast and i == HalfLength
+        last := true
+        tmau_temp := tmau
+        tmac_temp := tmac
+        tmad_temp := tmad
+        
+    //DRAW HANDICAPPED BANDS
+    if barstate.islast and i < HalfLength
+        line.new(bar_index - (i + 1), pastTmau, bar_index - (i), tmau, width = 2, style = line.style_dotted, color = colorBands)
+        line.new(bar_index - (i + 1), pastTmac, bar_index - (i), tmac, width = 2, style = line.style_dotted, color = colorBuffer)
+        line.new(bar_index - (i + 1), pastTmad, bar_index - (i), tmad, width = 2, style = line.style_dotted, color = colorBands)
+        
+ //DRAW SIGNALS
+    if reboundD != 0
+        label.new(bar_index - (i), reboundD, "▼", color = na, textcolor = colorDOWN, textalign=  text.align_center)
+        if i == 0 and onArrowDownInput == true
+            longalert := true
+            limit_price := close
+            alert("?? Midnight Hunter : Sell Alert ??\n?? Asset : " + syminfo.ticker + "\n?? TimeFrame : " + str.tostring(timeframe) + "\n?? Sell Price : " + str.tostring(limit_price) + " $\n\n? Signal Time : " + str.tostring(current_time), alert.freq_once_per_bar_close) 
+        if caution != 0 and cautionInput == true
+            label.new(bar_index - (i), reboundD, color = colorUP, style = label.style_xcross, size = size.tiny, textcolor = na)
+    if reboundU != 0
+        label.new(bar_index - (i), reboundU, '▲', color = na, textcolor = colorUP, textalign = text.align_center)
+        if i == 0 and onArrowUpInput == true
+            shortalert := true
+            limit_price := close
+            alert("?? Midnight Hunter : Buy Alert ??\n?? Asset : " + syminfo.ticker + "\n?? TimeFrame : " + str.tostring(timeframe) + "\n?? Buy Price : " + str.tostring(limit_price) + " $\n\n? Signal Time : " + str.tostring(current_time), alert.freq_once_per_bar_close) 
+        if caution != 0 and cautionInput == true
+            label.new(bar_index - (i), reboundU, color = colorDOWN, style = label.style_xcross, size = size.tiny, textcolor = na)
+            
+            
+    //SAVE HISTORY
+    pastTmac := tmac
+    pastTmau := tmau
+    pastTmad := tmad
+    
+    //LOOP IS ONLY FOR HANDICAPPED
+    if barstate.islast != true
+        break
+//DRAW REAL BANDS
+plot(last ? tmau_temp : tmau, title = "TMA Up", color = colorBands, linewidth=tmawidth, style = plot.style_line, offset = -HalfLength)
+plot(last ? tmac_temp : tmac, title = "TMA Mid", color = colorBuffer, linewidth=tmawidth, style = plot.style_line, offset = -HalfLength)
+plot(last ? tmad_temp : tmad, title = "TMA Down", color = colorBands, linewidth=tmawidth, style = plot.style_line, offset = -HalfLength)
+
+// Vẽ Ichimoku
+plot(showIchimoku ? conversionLine : na, color=color.new(#2962FF, 0), title="Conversion Line", linewidth=1)
+plot(showIchimoku ? baseLine : na, color=color.new(#B71C1C, 0), title="Base Line", linewidth=1)
+plot(showIchimoku ? close : na, offset = -displacement + 1, color=color.new(#43A047, 0), title="Lagging Span", linewidth=1)
+pi1 = plot(showIchimoku ? leadLine1 : na, offset = displacement - 1, color=color.new(#A5D6A7, 0), title="Leading Span A", linewidth=1)
+pi2 = plot(showIchimoku ? leadLine2 : na, offset = displacement - 1, color=color.new(#EF9A9A, 0), title="Leading Span B", linewidth=1)
+fill(pi1, pi2, color = showIchimoku ? (leadLine1 > leadLine2 ? color.new(color.green, 90) : color.new(color.red, 90)) : na)
+
+// Vẽ Entry Assassin
+plot(ema9, color=color.blue, title="EMA9")
+plot(ema5, color=color.green, title="EMA5")
+bgcolor(buyCondition ? color.new(color.green, 90) : sellCondition ? color.new(color.red, 90) : na)
+
+// Cảnh báo kết hợp
+if (buyCondition or shortalert) and barstate.isconfirmed
+    alert("Tín hiệu Mua Kết hợp\n" + 
+          (buyCondition ? "Entry Assassin: Phát hiện tín hiệu mua\n" : "") + 
+          (shortalert ? "Midnight Hunter: Cảnh báo Mua\nTài sản: " + syminfo.ticker + "\nKhung thời gian: " + str.tostring(timeframe) + "\nGiá Mua: " + str.tostring(limit_price) + " $\nThời gian tín hiệu: " + str.tostring(current_time) : ""), 
+          alert.freq_once_per_bar_close)
+
+if (sellCondition or longalert) and barstate.isconfirmed
+    alert("Tín hiệu Bán Kết hợp\n" + 
+          (sellCondition ? "Entry Assassin: Phát hiện tín hiệu bán\n" : "") + 
+          (longalert ? "Midnight Hunter: Cảnh báo Bán\nTài sản: " + syminfo.ticker + "\nKhung thời gian: " + str.tostring(timeframe) + "\nGiá Bán: " + str.tostring(limit_price) + " $\nThời gian tín hiệu: " + str.tostring(current_time) : ""), 
+          alert.freq_once_per_bar_close)
+
+// Thêm bảng thông tin nếu showTF1 được bật
+if showTF1
+    var table statusTable = table.new(position.top_right, 2, 5, border_width=1)
+    
+    table.cell(statusTable, 0, 0, "Chỉ báo", bgcolor=color.new(color.blue, 90), text_color=color.white)
+    table.cell(statusTable, 1, 0, "Giá trị", bgcolor=color.new(color.blue, 90), text_color=color.white)
+    
+    table.cell(statusTable, 0, 1, "EMA9", text_color=color.white)
+    table.cell(statusTable, 1, 1, str.tostring(ema9, "#.##"), text_color=color.white)
+    
+    table.cell(statusTable, 0, 2, "EMA5", text_color=color.white)
+    table.cell(statusTable, 1, 2, str.tostring(ema5, "#.##"), text_color=color.white)
+    
+    table.cell(statusTable, 0, 3, "MACD", text_color=color.white)
+    table.cell(statusTable, 1, 3, str.tostring(macdLine, "#.##"), text_color=color.white)
+    
+    table.cell(statusTable, 0, 4, "DMI+", text_color=color.white)
+    table.cell(statusTable, 1, 4, str.tostring(diPlus, "#.##"), text_color=color.white)
